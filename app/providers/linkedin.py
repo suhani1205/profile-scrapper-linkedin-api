@@ -110,7 +110,14 @@ def _group_by_type(included: list[dict]) -> dict[str, list[dict]]:
 class LinkedInProvider(ProfileProvider):
     """Fetches LinkedIn profiles directly via the Voyager internal API."""
 
-    def __init__(self, li_at: str, jsessionid: str, timeout: float = 30.0) -> None:
+    def __init__(
+        self,
+        li_at: str,
+        jsessionid: str,
+        timeout: float = 30.0,
+        bcookie: str = "",
+        bscookie: str = "",
+    ) -> None:
         if not li_at:
             raise ValueError("LI_AT cookie is required for the LinkedIn provider.")
         if not jsessionid:
@@ -118,6 +125,8 @@ class LinkedInProvider(ProfileProvider):
         self._li_at = li_at
         # Normalize: store without surrounding quotes; add them when building cookies.
         self._jsessionid = jsessionid.strip('"')
+        self._bcookie = bcookie.strip('"') if bcookie else ""
+        self._bscookie = bscookie.strip('"') if bscookie else ""
         self._timeout = timeout
 
     # ------------------------------------------------------------------
@@ -131,22 +140,24 @@ class LinkedInProvider(ProfileProvider):
             timeout=self._timeout,
             follow_redirects=False,
         ) as client:
+            headers = self._headers(public_id)
+            cookies = self._cookies()
             # Fire profileView, networkInfo, and skills in parallel.
             pv_req = client.get(
                 f"{_BASE}/identity/profiles/{public_id}/profileView",
-                headers=self._headers(),
-                cookies=self._cookies(),
+                headers=headers,
+                cookies=cookies,
             )
             ni_req = client.get(
                 f"{_BASE}/identity/profiles/{public_id}/networkInfo",
-                headers=self._headers(),
-                cookies=self._cookies(),
+                headers=headers,
+                cookies=cookies,
             )
             sk_req = client.get(
                 f"{_BASE}/identity/profiles/{public_id}/skills",
                 params={"count": "100"},
-                headers=self._headers(),
-                cookies=self._cookies(),
+                headers=headers,
+                cookies=cookies,
             )
 
             import asyncio
@@ -164,8 +175,9 @@ class LinkedInProvider(ProfileProvider):
     # HTTP helpers
     # ------------------------------------------------------------------
 
-    def _headers(self) -> dict[str, str]:
-        return {
+    def _headers(self, public_id: str = "") -> dict[str, str]:
+        csrf = self._jsessionid if self._jsessionid.startswith("ajax:") else f"ajax:{self._jsessionid}"
+        headers = {
             "User-Agent": (
                 "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) "
                 "AppleWebKit/537.36 (KHTML, like Gecko) "
@@ -173,16 +185,27 @@ class LinkedInProvider(ProfileProvider):
             ),
             "Accept": _ACCEPT,
             "Accept-Language": "en-US,en;q=0.9",
+            "Accept-Encoding": "gzip, deflate, br",
             "X-Li-Lang": "en_US",
             "X-RestLi-Protocol-Version": "2.0.0",
             # csrf-token must equal the JSESSIONID value (without quotes).
-            "csrf-token": f"ajax:{self._jsessionid}" if not self._jsessionid.startswith("ajax:") else self._jsessionid,
+            "csrf-token": csrf,
             "X-Li-Track": (
-                '{"clientVersion":"1.13.4517","osName":"web",'
-                '"timezoneOffset":0,"timezone":"UTC",'
-                '"deviceFormFactor":"DESKTOP","mpName":"voyager-web"}'
+                '{"clientVersion":"1.13.9217","osName":"web",'
+                '"timezoneOffset":0,"timezone":"America/New_York",'
+                '"deviceFormFactor":"DESKTOP","mpName":"voyager-web",'
+                '"displayDensity":2,"displayWidth":1920,"displayHeight":1080}'
             ),
+            "sec-ch-ua": '"Chromium";v="124", "Google Chrome";v="124", "Not-A.Brand";v="99"',
+            "sec-ch-ua-mobile": "?0",
+            "sec-ch-ua-platform": '"macOS"',
+            "sec-fetch-dest": "empty",
+            "sec-fetch-mode": "cors",
+            "sec-fetch-site": "same-origin",
         }
+        if public_id:
+            headers["Referer"] = f"https://www.linkedin.com/in/{public_id}/"
+        return headers
 
     def _cookies(self) -> dict[str, str]:
         jsessionid_cookie = (
@@ -190,11 +213,20 @@ class LinkedInProvider(ProfileProvider):
             if not self._jsessionid.startswith("ajax:")
             else self._jsessionid
         )
-        return {
+        cookies: dict[str, str] = {
             "li_at": self._li_at,
             # LinkedIn expects the JSESSIONID value wrapped in double-quotes.
             "JSESSIONID": f'"{jsessionid_cookie}"',
+            "lang": "v=2&lang=en-us",
         }
+        # bcookie / bscookie are browser-fingerprint cookies LinkedIn sets on first
+        # visit. Without them some data-centre IPs get 410 responses. Copy them
+        # from DevTools → Application → Cookies → linkedin.com.
+        if self._bcookie:
+            cookies["bcookie"] = f'"{self._bcookie}"'
+        if self._bscookie:
+            cookies["bscookie"] = f'"{self._bscookie}"'
+        return cookies
 
     def _check_response(
         self,
@@ -226,6 +258,15 @@ class LinkedInProvider(ProfileProvider):
         if resp.status_code == 429 or resp.status_code == 999:
             # 999 is LinkedIn's anti-bot challenge status code.
             raise RateLimited()
+        if resp.status_code == 410:
+            raise UpstreamError(
+                "LinkedIn returned 410. Possible causes: (1) session cookies "
+                "expired — refresh li_at / JSESSIONID from your browser; "
+                "(2) missing bcookie/bscookie — copy them from DevTools → "
+                "Application → Cookies → linkedin.com and add to .env; "
+                "(3) datacenter IP block — LinkedIn blocks cloud-provider IPs.",
+                status=410,
+            )
         if resp.status_code >= 400:
             raise UpstreamError(
                 f"LinkedIn returned HTTP {resp.status_code}: {resp.text[:200]}",

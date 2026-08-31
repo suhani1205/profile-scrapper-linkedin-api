@@ -18,6 +18,8 @@ class Settings:
         self.provider_name = os.getenv("PROVIDER", "linkedin").lower()
         self.li_at = os.getenv("LI_AT", "")
         self.li_jsessionid = os.getenv("LI_JSESSIONID", "")
+        self.li_bcookie = os.getenv("LI_BCOOKIE", "")
+        self.li_bscookie = os.getenv("LI_BSCOOKIE", "")
         self.anthropic_api_key = os.getenv("ANTHROPIC_API_KEY", "")
         self.api_key = os.getenv("API_KEY", "")  # optional auth on our own API
         self.request_timeout = float(os.getenv("REQUEST_TIMEOUT", "30"))
@@ -33,5 +35,11 @@ def get_provider() -> ProfileProvider:
     if s.provider_name == "fixture":
         return FixtureProvider()
     if s.provider_name == "linkedin":
-        return LinkedInProvider(s.li_at, s.li_jsessionid, timeout=s.request_timeout)
+        return LinkedInProvider(
+            s.li_at,
+            s.li_jsessionid,
+            timeout=s.request_timeout,
+            bcookie=s.li_bcookie,
+            bscookie=s.li_bscookie,
+        )
     raise ValueError(f"Unknown PROVIDER: {s.provider_name}  (valid: linkedin, fixture)")

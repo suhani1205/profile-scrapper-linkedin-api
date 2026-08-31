@@ -27,7 +27,7 @@ class FixtureProvider(ProfileProvider):
             last_name="Lovelace",
             headline="Backend Engineer | Distributed Systems | JVM",
             summary="Sample profile served by the fixture provider. Set "
-            "PROVIDER=proxycurl and a valid API key for live data.",
+            "PROVIDER=linkedin with valid LI_AT and LI_JSESSIONID cookies for live data.",
             location="London, England, United Kingdom",
             country="United Kingdom",
             profile_picture_url="https://example.com/pic.jpg",
