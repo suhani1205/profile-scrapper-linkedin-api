@@ -1,0 +1,18 @@
+services:
+  - type: web
+    name: linkedin-profile-api
+    runtime: python
+    buildCommand: pip install -r requirements.txt
+    startCommand: uvicorn app.main:app --host 0.0.0.0 --port $PORT
+    plan: free
+    envVars:
+      - key: PROVIDER
+        value: linkedin
+      - key: LI_AT
+        sync: false          # set manually in the Render dashboard
+      - key: LI_JSESSIONID
+        sync: false          # set manually in the Render dashboard
+      - key: API_KEY
+        sync: false          # optional — leave blank to disable auth
+      - key: REQUEST_TIMEOUT
+        value: "30"
