@@ -11,13 +11,11 @@ from functools import lru_cache
 from app.providers.base import ProfileProvider
 from app.providers.fixture import FixtureProvider
 from app.providers.linkedin import LinkedInProvider
-from app.providers.proxycurl import ProxycurlProvider
 
 
 class Settings:
     def __init__(self) -> None:
         self.provider_name = os.getenv("PROVIDER", "linkedin").lower()
-        self.proxycurl_api_key = os.getenv("PROXYCURL_API_KEY", "")
         self.li_at = os.getenv("LI_AT", "")
         self.li_jsessionid = os.getenv("LI_JSESSIONID", "")
         self.anthropic_api_key = os.getenv("ANTHROPIC_API_KEY", "")
@@ -36,6 +34,4 @@ def get_provider() -> ProfileProvider:
         return FixtureProvider()
     if s.provider_name == "linkedin":
         return LinkedInProvider(s.li_at, s.li_jsessionid, timeout=s.request_timeout)
-    if s.provider_name == "proxycurl":
-        return ProxycurlProvider(s.proxycurl_api_key, timeout=s.request_timeout)
-    raise ValueError(f"Unknown PROVIDER: {s.provider_name}")
+    raise ValueError(f"Unknown PROVIDER: {s.provider_name}  (valid: linkedin, fixture)")
