@@ -7,7 +7,7 @@ services:
     plan: free
     envVars:
       - key: PROVIDER
-        value: linkedin
+        value: fixture
       - key: LI_AT
         sync: false          # set manually in the Render dashboard
       - key: LI_JSESSIONID
