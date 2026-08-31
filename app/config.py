@@ -20,6 +20,7 @@ class Settings:
         self.proxycurl_api_key = os.getenv("PROXYCURL_API_KEY", "")
         self.li_at = os.getenv("LI_AT", "")
         self.li_jsessionid = os.getenv("LI_JSESSIONID", "")
+        self.anthropic_api_key = os.getenv("ANTHROPIC_API_KEY", "")
         self.api_key = os.getenv("API_KEY", "")  # optional auth on our own API
         self.request_timeout = float(os.getenv("REQUEST_TIMEOUT", "30"))
 

@@ -1,6 +1,6 @@
 services:
   - type: web
-    name: linkedin-profile-api
+    name: profile-scrapper-linkedin-api
     runtime: python
     buildCommand: pip install -r requirements.txt
     startCommand: uvicorn app.main:app --host 0.0.0.0 --port $PORT
@@ -12,6 +12,8 @@ services:
         sync: false          # set manually in the Render dashboard
       - key: LI_JSESSIONID
         sync: false          # set manually in the Render dashboard
+      - key: ANTHROPIC_API_KEY
+        sync: false          # required for GET /analyze
       - key: API_KEY
         sync: false          # optional — leave blank to disable auth
       - key: REQUEST_TIMEOUT

@@ -13,19 +13,21 @@ from typing import Optional
 from fastapi import Depends, FastAPI, Header, HTTPException, Query
 from fastapi.responses import JSONResponse
 
+from app.analyzer import analyze_profile
 from app.config import get_provider, get_settings
 from app.providers.base import ProfileNotFound, RateLimited, UpstreamError
-from app.schema import ErrorResponse, Profile
+from app.schema import ErrorResponse, Profile, ProfileAnalysis
 from app.validation import InvalidProfileURL, normalize_profile_url
 
 app = FastAPI(
-    title="LinkedIn Profile API",
+    title="Profile Scrapper LinkedIn API",
     description=(
-        "Accepts a LinkedIn profile URL and returns structured profile data as "
-        "JSON. Data is sourced from a licensed provider rather than by scraping "
-        "LinkedIn directly — see the README for the rationale."
+        "Accepts a LinkedIn profile URL and returns structured profile data as JSON, "
+        "sourced by reverse-engineering LinkedIn's Voyager API. "
+        "Also exposes /analyze, which runs the profile through Claude Opus 4.6 "
+        "to generate structured career insights."
     ),
-    version="1.0.0",
+    version="2.0.0",
 )
 
 # --- naive in-memory rate limiter (per client, best-effort) --------------
@@ -94,6 +96,52 @@ async def get_profile(
         )
     except UpstreamError as exc:
         raise HTTPException(status_code=502, detail=f"Upstream error: {exc}")
+
+
+@app.get(
+    "/analyze",
+    response_model=ProfileAnalysis,
+    responses={
+        400: {"model": ErrorResponse},
+        401: {"model": ErrorResponse},
+        404: {"model": ErrorResponse},
+        429: {"model": ErrorResponse},
+        502: {"model": ErrorResponse},
+    },
+    summary="Analyze a LinkedIn profile with Claude Opus 4.6",
+    description=(
+        "Fetches a LinkedIn profile and passes it to Claude Opus 4.6 "
+        "(adaptive thinking, medium effort) to produce structured career insights: "
+        "summary, trajectory, top skills, industry, seniority, achievements, and "
+        "a personalized outreach hook. Requires ANTHROPIC_API_KEY to be configured."
+    ),
+)
+async def get_profile_analysis(
+    url: str = Query(..., description="LinkedIn profile URL, e.g. https://www.linkedin.com/in/username/"),
+    _auth: None = Depends(require_api_key),
+    x_forwarded_for: Optional[str] = Header(default=None),
+) -> ProfileAnalysis:
+    _rate_limit(x_forwarded_for or "local")
+
+    try:
+        clean_url = normalize_profile_url(url)
+    except InvalidProfileURL as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+
+    provider = get_provider()
+    try:
+        profile = await provider.fetch(clean_url)
+    except ProfileNotFound:
+        raise HTTPException(status_code=404, detail="Profile not found.")
+    except RateLimited:
+        raise HTTPException(status_code=429, detail="Upstream provider rate limit reached.")
+    except UpstreamError as exc:
+        raise HTTPException(status_code=502, detail=f"Upstream error: {exc}")
+
+    try:
+        return await analyze_profile(profile, get_settings().anthropic_api_key)
+    except UpstreamError as exc:
+        raise HTTPException(status_code=502, detail=f"Analysis error: {exc}")
 
 
 @app.exception_handler(HTTPException)
