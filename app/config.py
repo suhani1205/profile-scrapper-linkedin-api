@@ -1,0 +1,40 @@
+"""Configuration and provider selection.
+
+All secrets come from environment variables — nothing is hard-coded, so the
+repository stays credential-free. See .env.example.
+"""
+from __future__ import annotations
+
+import os
+from functools import lru_cache
+
+from app.providers.base import ProfileProvider
+from app.providers.fixture import FixtureProvider
+from app.providers.linkedin import LinkedInProvider
+from app.providers.proxycurl import ProxycurlProvider
+
+
+class Settings:
+    def __init__(self) -> None:
+        self.provider_name = os.getenv("PROVIDER", "linkedin").lower()
+        self.proxycurl_api_key = os.getenv("PROXYCURL_API_KEY", "")
+        self.li_at = os.getenv("LI_AT", "")
+        self.li_jsessionid = os.getenv("LI_JSESSIONID", "")
+        self.api_key = os.getenv("API_KEY", "")  # optional auth on our own API
+        self.request_timeout = float(os.getenv("REQUEST_TIMEOUT", "30"))
+
+
+@lru_cache
+def get_settings() -> Settings:
+    return Settings()
+
+
+def get_provider() -> ProfileProvider:
+    s = get_settings()
+    if s.provider_name == "fixture":
+        return FixtureProvider()
+    if s.provider_name == "linkedin":
+        return LinkedInProvider(s.li_at, s.li_jsessionid, timeout=s.request_timeout)
+    if s.provider_name == "proxycurl":
+        return ProxycurlProvider(s.proxycurl_api_key, timeout=s.request_timeout)
+    raise ValueError(f"Unknown PROVIDER: {s.provider_name}")
